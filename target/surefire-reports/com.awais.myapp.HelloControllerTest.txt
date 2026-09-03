@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.awais.myapp.HelloControllerTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.261 s -- in com.awais.myapp.HelloControllerTest
