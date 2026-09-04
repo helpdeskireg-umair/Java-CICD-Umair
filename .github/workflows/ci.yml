@@ -86,8 +86,7 @@ jobs:
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             "sudo systemctl restart my-java-app"
 
-      # 6. Confirm the app is actually up after the restart
+      # 6. Confirm the app is actually up after the restart (retry ~60s)
       - name: Verify app is up
         run: |
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "curl -sf http://127.0.0.1:8081/ >/dev/null && echo 'health check OK'"
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'for i in $(seq 1 30); do curl -sf http://127.0.0.1:8081/ >/dev/null && { echo "health check OK"; exit 0; }; sleep 2; done; echo "app failed to come up" >&2; exit 1'
