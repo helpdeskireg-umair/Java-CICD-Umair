@@ -23,11 +23,11 @@ jobs:
     steps:
       # 1. Checkout the repository code
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # 2. Set up Java 17
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -39,7 +39,7 @@ jobs:
 
       # 4. Upload the built JAR as an artifact so the deploy job can use it
       - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: app-jar
           path: target/*.jar
@@ -57,11 +57,11 @@ jobs:
     steps:
       # 1. Checkout code (needed for rsync / scp)
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # 2. Download the JAR built in the previous job
       - name: Download JAR artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: app-jar
           path: target/
@@ -85,3 +85,9 @@ jobs:
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             "sudo systemctl restart my-java-app"
+
+      # 6. Confirm the app is actually up after the restart
+      - name: Verify app is up
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "curl -sf http://127.0.0.1:8081/ >/dev/null && echo 'health check OK'"
