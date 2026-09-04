@@ -337,10 +337,21 @@ Once everything is set up, this is what happens every time you push to `main`:
 4. Job 1 passes → built JAR is saved as an artifact
 5. Job 2: downloads the JAR, SSH into the VPS, copies the JAR to
           /opt/my-java-app/app.jar, restarts the systemd service
-6. systemd starts the new JAR with java -jar
-7. Nginx forwards HTTP requests on port 80 to the app on port 8080
-8. Visit http://your-vps-ip/ and see the greeting
+6. systemd starts the new JAR with java -jar (on port 8081, bound to localhost)
+7. Nginx forwards HTTP requests on port 80 → the app on localhost:8081 at /java
+8. Visit http://145.223.79.115/java and see the greeting
 ```
+
+> **As-deployed facts for THIS server (145.223.79.115):**
+> - The VPS also hosts the React app, which owns `http://145.223.79.115/`.
+>   The Java app shares port 80 via a `location /java` block in Nginx.
+> - The systemd unit runs the app on **port 8081** bound to localhost because
+>   port 8080 is occupied by a Docker container (mail server UI).
+> - Deploy user is **root**; deploy key was generated on the VPS at
+>   `/root/.ssh/java_github_actions`, and its public half was added to
+>   `/root/.ssh/authorized_keys`.
+> - Nginx only auto-loads `*.conf` files from `/etc/nginx/sites-enabled/`
+>   (CloudPanel quirk) — configs must use that suffix.
 
 ### First deployment
 
@@ -350,11 +361,12 @@ Before the pipeline can deploy, the VPS needs at least one JAR to exist so
 ```bash
 # On your local machine
 mvn clean package -DskipTests
-scp target/my-java-app-1.0.0.jar myapp@YOUR_VPS_IP:/opt/my-java-app/app.jar
+scp target/my-java-app-1.0.0.jar root@145.223.79.115:/opt/my-java-app/app.jar
 
 # On the VPS
-sudo systemctl start my-java-app
-sudo systemctl status my-java-app   # should show "active (running)"
+systemctl start my-java-app
+systemctl status my-java-app   # should show "active (running)"
+curl -s http://localhost:8081/ # should show the greeting
 ```
 
 After this, every push to `main` will automatically update the running app.
