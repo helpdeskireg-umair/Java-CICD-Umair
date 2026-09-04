@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# Cancel stale runs on the same branch; the newest push wins
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ─────────────────────────────────────────────
   # JOB 1: Build & Test
@@ -69,10 +74,10 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
-      # 4. Copy the JAR file to the VPS
+      # 4. Copy the JAR file to the VPS (glob in case the version changes)
       - name: Copy JAR to VPS
         run: |
-          scp target/my-java-app-1.0.0.jar \
+          scp target/my-java-app-*.jar \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/my-java-app/app.jar
 
       # 5. Restart the systemd service on the VPS
