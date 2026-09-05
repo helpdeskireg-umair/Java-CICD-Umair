@@ -2,28 +2,18 @@
 
 ## Prerequisites
 
-| Required | What you need |
-|----------|---------------|
-| GitHub Repository | Your code must be hosted on GitHub |
-| VPS (Virtual Private Server) | A Linux server (Ubuntu 22.04) with SSH access |
-| SSH Key Pair | For secure authentication between GitHub and the VPS |
-| Basic GitHub Actions Knowledge | Understanding workflows and YAML syntax |
+- GitHub repository
+- VPS (Ubuntu 22.04) with SSH access
+- SSH key pair
+- Basic knowledge of GitHub Actions / YAML
 
 ---
 
-## Setting Up GitHub for CI/CD Deployment
+## 1. Create a GitHub Repository
 
-### 1. Create a GitHub Repository
-
-If you don't have a GitHub repository for your project:
-
-1. Go to **GitHub** and log in.
-2. Click **New repository**.
-3. Name your repository (e.g., `Java-CICD-Umair`).
-4. Set it to public or private as needed.
-5. Click **Create repository**.
-
-If you already have a project directory on your local machine, push it to GitHub:
+1. Go to **GitHub** → **New repository**.
+2. Name it (e.g., `Java-CICD-Umair`), set public/private, click **Create repository**.
+3. Push your existing project:
 
 ```bash
 git init
@@ -34,42 +24,21 @@ git branch -M main
 git push -u origin main
 ```
 
-Once you push your code to GitHub, the next step is to configure the server.
-
-### 2. Initial VPS Setup (first time only)
-
-**OS:** Ubuntu 22.04
-
-Update system:
+## 2. Initial VPS Setup (first time only)
 
 ```bash
 sudo apt update && sudo apt upgrade -y
-```
-
-Install dependencies:
-
-```bash
 sudo apt install -y openjdk-17-jdk maven nginx git
-```
-
-Create the deployment directory:
-
-```bash
 sudo mkdir -p /opt/my-java-app
 ```
 
-> Only do this once, on the first setup. The folder keeps the built JAR file.
+## 3. Set Up the App as a Service (systemd)
 
-### 3. Set Up the App as a Service (systemd)
-
-The app must start on boot and auto-restart if it crashes. Create the systemd
-service file:
+Auto-starts on boot and auto-restarts on crash.
 
 ```bash
 sudo nano /etc/systemd/system/my-java-app.service
 ```
-
-Paste the content below:
 
 ```ini
 [Unit]
@@ -79,8 +48,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/my-java-app
-ExecStart=/usr/bin/java -jar /opt/my-java-app/app.jar \
-  --server.port=8081 --server.address=127.0.0.1
+ExecStart=/usr/bin/java -jar /opt/my-java-app/app.jar --server.port=8081 --server.address=127.0.0.1
 Restart=on-failure
 RestartSec=5
 SuccessExitStatus=143
@@ -89,34 +57,25 @@ SuccessExitStatus=143
 WantedBy=multi-user.target
 ```
 
-> **Why port 8081?** On this server, port **8080 is already used by a Docker
-> mail container**, so don't touch it — the Java app runs on **8081** and binds
-> to the localhost only (`127.0.0.1`), which keeps it safe from the internet.
-
-Then enable and start it (once a JAR exists):
+> **Why 8081?** Port 8080 is taken by a Docker mail container on this server.
+> The app binds only to `127.0.0.1`, so it's not exposed to the internet.
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable my-java-app
 ```
 
-### 4. Nginx Reverse Proxy Configuration
+## 4. Nginx Reverse Proxy
 
-The same server already serves a React app on **port 80** with
-`server_name 145.223.79.115`. So the Java app is exposed as a URL path:
-**`http://145.223.79.115/java`**.
+The React app owns port 80, so the Java app lives at **`http://145.223.79.115/java`**.
 
-> **Important:** on this server, Nginx **only auto-loads files ending in
-> `.conf`** from `/etc/nginx/sites-enabled/`. Your config file name must end
-> with `.conf`.
-
-Edit the vhost file (the React one, since it owns port 80):
+> **Note:** this server's Nginx only auto-loads `.conf` files from `/etc/nginx/sites-enabled/`.
 
 ```bash
 sudo nano /etc/nginx/sites-available/my-react-app.conf
 ```
 
-Add this block inside the `server { ... }` (before `location /`):
+Add this inside `server { ... }` (before `location /`):
 
 ```nginx
 location /java {
@@ -128,43 +87,26 @@ location /java {
 }
 ```
 
-Test and reload Nginx:
-
 ```bash
-sudo nginx -t
-sudo systemctl reload nginx
+sudo nginx -t && sudo systemctl reload nginx
+curl -s http://127.0.0.1:8081/   # app directly
+curl -s http://localhost/java    # app via Nginx
 ```
 
-Check that everything is wired correctly:
-
-```bash
-curl -s http://127.0.0.1:8081/    # Java app directly
-curl -s http://localhost/java      # Java app through Nginx
-```
-
-### 5. Set Up SSH Key for GitHub Actions
-
-On the VPS, generate a dedicated RSA key (no passphrase — automation can't type
-one):
+## 5. Set Up SSH Key for GitHub Actions
 
 ```bash
 ssh-keygen -t rsa -b 4096 -C "github-actions-java" -f /root/.ssh/java_github_actions -N ""
 cat /root/.ssh/java_github_actions.pub >> /root/.ssh/authorized_keys
 chmod 600 /root/.ssh/authorized_keys
+cat /root/.ssh/java_github_actions   # copy the whole private key for the secret
 ```
 
-To get the private key (this goes into GitHub Secrets):
+> Copy the **full** output, including the `BEGIN` and `END` lines.
 
-```bash
-cat /root/.ssh/java_github_actions
-```
+## 6. Create GitHub Actions Workflow
 
-> Copy the **whole** output, including the `-----BEGIN OPENSSH PRIVATE
-> KEY-----` and `-----END OPENSSH PRIVATE KEY-----` lines.
-
-### 6. Create GitHub Actions Workflow
-
-In your repository, create `.github/workflows/ci.yml`:
+Create `.github/workflows/ci.yml`:
 
 ```yaml
 name: CI/CD Pipeline
@@ -183,21 +125,17 @@ jobs:
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
       - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'maven'
-
       - name: Build with Maven & run tests
         run: mvn clean verify --no-transfer-progress
-
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v5
         with:
@@ -210,93 +148,62 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
       - name: Download JAR artifact
         uses: actions/download-artifact@v5
         with:
           name: app-jar
           path: target/
-
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
-
       - name: Copy JAR to VPS
         run: |
-          scp target/my-java-app-*.jar \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/my-java-app/app.jar
-
+          scp target/my-java-app-*.jar ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/my-java-app/app.jar
       - name: Restart app on VPS
         run: |
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "sudo systemctl restart my-java-app"
-
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "sudo systemctl restart my-java-app"
       - name: Verify app is up
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'for i in $(seq 1 30); do curl -sf http://127.0.0.1:8081/ >/dev/null && { echo "health check OK"; exit 0; }; sleep 2; done; echo "app failed to come up" >&2; exit 1'
 ```
 
-> **Why the last step?** `systemctl restart` returns before the app is fully
-> started. The health check retries for up to 60 seconds, so the pipeline only
-> goes green if the app really is serving requests.
+> **Health check:** `systemctl restart` returns before the app is ready, so the check retries up to 60s until the app responds.
 
-### 7. Secrets to add in GitHub repo
+## 7. Add GitHub Secrets
 
-Go to **Settings → Secrets and variables → Actions → New repository secret**:
+**Settings → Secrets and variables → Actions → New repository secret**
 
 | Secret name   | Value |
 |---------------|-------|
-| `VPS_HOST`    | `145.223.79.115`  (your VPS IP address) |
-| `VPS_USER`    | `root`  (your host username) |
+| `VPS_HOST`    | `145.223.79.115` (your VPS IP) |
+| `VPS_USER`    | `root` |
 | `VPS_SSH_KEY` | your SSH private key from Step 5 |
 
-### 8. First Manual Deploy (before automation)
-
-Do this once so the service has a JAR to run:
+## 8. First Manual Deploy (once, before automation)
 
 ```bash
-# On your local machine
+# Local machine
 mvn clean package -DskipTests
 scp target/*.jar root@145.223.79.115:/opt/my-java-app/app.jar
-
-# On the VPS
+# VPS
 sudo systemctl start my-java-app
-curl -s http://127.0.0.1:8081/     # should print the greeting
+curl -s http://127.0.0.1:8081/   # should print the greeting
 ```
 
 ---
 
 ## How CI/CD Works Now
 
-1. **Push code to the `main` branch.**
-2. **GitHub Actions starts automatically.**
-3. **Job 1 (Build & Test):** installs Java 17, runs `mvn clean verify`, runs the
-   tests, and packages the JAR.
-4. **Job 1 must pass**, otherwise nothing is deployed (fail-fast).
-5. **Job 2 (Deploy):** downloads the JAR, SSHes into the VPS, copies it to
-   `/opt/my-java-app/app.jar`, and restarts the service.
-6. **Health check** confirms the app is up.
-7. **Visit `http://145.223.79.115/java`** to see the app live.
-
-```
-Push to main
-     │
-     ▼
-┌──────────────────┐   runs on push + pull_request
-│  Build & Test    │  (tests must pass)
-└─────────┬────────┘
-          │ passes
-          ▼
-┌──────────────────┐   runs on push to main ONLY
-│    Deploy        │  scp JAR → restart service → health check
-└─────────┬────────┘
-          ▼
-   http://145.223.79.115/java
-```
+1. Push to `main`.
+2. GitHub Actions starts.
+3. **Job 1** — installs Java 17, runs `mvn clean verify` (tests), packages JAR.
+4. If tests fail → pipeline stops, nothing deploys.
+5. **Job 2** — downloads JAR, SSHes to VPS, copies to `/opt/my-java-app/app.jar`, restarts service.
+6. Health check confirms the app is up.
+7. Visit `http://145.223.79.115/java` to see the app live.
